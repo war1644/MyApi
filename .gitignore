@@ -1,0 +1,6 @@
+composer.lock
+runtime/*
+.idea/
+.env
+*/test
+test
