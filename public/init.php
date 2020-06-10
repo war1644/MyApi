@@ -3,7 +3,7 @@
  * 统一初始化
  */
 //调试模式
-define('DEBUG',false);
+define('DEBUG',1);
 //请求时间记录
 $requsetStartTime = microtime(true);
 // 定义项目路径
@@ -23,7 +23,7 @@ include API_ROOT . '/config/'.APP_NAME.'/di.php';
 /*********此处为全局服务*********/
 
 // 调试模式
-$di->debug = !empty($_GET['debug']) ? true : DEBUG;
+$di->debug = $_GET['debug'] ? true : DEBUG;
 if ($di->debug) {
     //记录接口相应时间
     new \Common\Tool\ResponseTimeLog($requsetStartTime);

@@ -1,23 +1,30 @@
 <?php
-/**
- * ApiDesc
- * @author dxq1994@gmail.com
- * @version
- * v2018/8/16 上午10:24 初版
- */
+namespace PhalApi\Helper;
 
-namespace Common\Lib\Helper;
-
+use PhalApi\Helper\ApiOnline;
 use PhalApi\ApiFactory;
 use PhalApi\Exception;
 
-class ApiDesc extends \PhalApi\Helper\ApiDesc
-{
+/**
+ * ApiDesc - 在线接口描述查看 - 辅助类
+ *
+ * @package     PhalApi\Helper
+ * @license     http://www.phalapi.net/license GPL 协议
+ * @link        http://www.phalapi.net/
+ * @author      dogstar <chanzonghuang@gmail.com> 2015-05-30
+ */
+
+class ApiDesc extends ApiOnline {
+
     public function render($tplPath = NULL) {
+        parent::render($tplPath);
+
         $service    = \PhalApi\DI()->request->getService();
         $namespace  = \PhalApi\DI()->request->getNamespace();
         $api        = \PhalApi\DI()->request->getServiceApi();
         $action     = \PhalApi\DI()->request->getServiceAction();
+
+        $namespace  = str_replace('_', '\\', $namespace); // 支持多级命名空间，扩展类库接口需要用到 @dogstar 20200114
         $className  = '\\' . $namespace . '\\Api\\' . str_replace('_', '\\', ucfirst($api));
 
         $rules = array();
@@ -51,7 +58,7 @@ class ApiDesc extends \PhalApi\Helper\ApiDesc
         }
         $needClassDocComment = '';
         foreach (explode("\n", $classDocComment) as $comment) {
-            if (stripos($comment, '@exception') !== FALSE
+            if (stripos($comment, '@exception') !== FALSE 
                 || stripos($comment, '@return') !== FALSE) {
                 $needClassDocComment .=  "\n" . $comment;
             }
@@ -111,11 +118,10 @@ class ApiDesc extends \PhalApi\Helper\ApiDesc
             }
 
             //以返回字段为key，保证覆盖
-            $returns[$returnCommentArr[1]] = $returnCommentArr;
+            $returns[$returnCommentArr[1]] = $returnCommentArr; 
         }
 
         $tplPath = !empty($tplPath) ? $tplPath : dirname(__FILE__) . '/api_desc_tpl.php';
         include $tplPath;
     }
-
 }

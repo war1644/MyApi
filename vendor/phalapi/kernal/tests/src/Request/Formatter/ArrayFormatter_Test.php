@@ -53,6 +53,19 @@ class PhpUnderControl_PhalApiRequestFormatterArray_Test extends \PHPUnit_Framewo
     }
 
     /**
+     * 针对接收含加号参数的测试
+     */
+    public function testParseJsonForPlus()
+    {
+        $rule = array('name' => 'testKey', 'type' => 'array', 'format' => 'json');
+
+        $rs = $this->arrayFormatter->parse('{"a":"+86 10000"}', $rule);
+
+        $this->assertTrue(is_array($rs));
+        $this->assertEquals('+86 10000', $rs['a']);
+    }
+
+    /**
      * @expectedException PhalApi\Exception\BadRequestException
      */
     public function testParseWrongJson()
@@ -60,5 +73,29 @@ class PhpUnderControl_PhalApiRequestFormatterArray_Test extends \PHPUnit_Framewo
         $rule = array('name' => 'testKey', 'type' => 'array', 'format' => 'json');
 
         $rs = $this->arrayFormatter->parse('{"a":1', $rule);
+    }
+
+    /**
+     * @expectedException PhalApi\Exception\BadRequestException
+     * @expectedExceptionMessage 显示指定的错误信息
+     */
+    public function testParseWrongJsonWithMessage()
+    {
+        $rule = array('name' => 'testKey', 'type' => 'array', 'format' => 'json', 'message' => '显示指定的错误信息');
+
+        $rs = $this->arrayFormatter->parse('{"a":1', $rule);
+    }
+
+    /**
+     * 空字符串转为空数组
+     */
+    public function testParseEmptyStringToArray()
+    {
+        $rule = array('name' => 'testKey', 'type' => 'array', 'format' => 'explode', 'message' => '显示指定的错误信息');
+
+        $rs = $this->arrayFormatter->parse('', $rule);
+
+        $this->assertEmpty($rs);
+        $this->assertSame(array(), $rs);
     }
 }

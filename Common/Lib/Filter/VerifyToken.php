@@ -24,7 +24,7 @@ class VerifyToken implements \PhalApi\Filter
             $userId = \PhalApi\DI()->request->get('uid');
 
             try {
-                $tokenObj = JWT::decode($token, SECRET_KEY, ['HS256']);
+                $tokenObj = JWT::decode($token, SECRET_KEY, ['c']);
             } catch (\Exception $e) {
 
                 throw new MyException('您的账号异常，请重新登录', INVALID_TOKEN);

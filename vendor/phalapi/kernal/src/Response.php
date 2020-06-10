@@ -100,11 +100,62 @@ abstract class Response {
      * 结果输出
      */
     public function output() {
+        // Step 1. 头部header处理
     	$this->handleHeaders($this->headers);
 
+        // Step 2. 获取数据结果
         $rs = $this->getResult();
 
-    	echo $this->formatResult($rs);
+        // Step 3. 结构体字段映射
+        $rs = $this->mapStructure($rs);
+
+        // Step 4. 序列化结果
+        $rs = $this->formatResult($rs);
+
+        // Step 5. 返回输出结果
+    	$this->echoResult($rs);
+    }
+
+    /**
+     * 结构体字段映射
+     */
+    protected function mapStructure($rs) {
+        $map = $this->getStructureMapConfig();
+        foreach ($rs as $key => $val) {
+            if (!isset($map[$key]) || $key == $map[$key]) {
+                continue;
+            }
+            $rs[$map[$key]] = $val;
+            unset($rs[$key]);
+        }
+        return $rs;
+    }
+
+    /**
+     * 获取返回字段映射配置，在线接口文档或外部需要展示的场景也需要使用，故用public
+     */
+    public function getStructureMapConfig() {
+        $structureMap = \PhalApi\DI()->config->get('sys.response.structure_map', array());
+        $map = array(
+            'ret'   => 'ret',
+            'data'  => 'data',
+            'msg'   => 'msg',
+            'debug' => 'debug',
+        );
+
+        foreach ($structureMap as $oldKey => $newKey) {
+            if (!isset($map[$oldKey]) || empty($newKey)) {
+                continue;
+            }
+
+            $map[$oldKey] = $newKey;
+        }
+
+        return $map;
+    }
+
+    protected function echoResult($rs) {
+        echo $rs;
     }
     
     /** ------------------ getter ------------------ **/
@@ -162,28 +213,21 @@ abstract class Response {
         return $this;
     }
 
+    /**
+     * 获取返回结果
+     */
     public function getResult() {
-        
-        $responseData = array();
-        if($this->msg && count($this->data) == 0){
-            $responseData['msg']  = $this->msg;
-            $responseData['code'] = $this->ret;
-            $responseData['info'] = array();
-        }else{
-            $responseData = $this->data;
-        }
-
-//         $rs = array(
-//             'ret'   => $this->ret,
-//             'data'  => $this->data,
-//             'msg'   => $this->msg,
-//         );
+        $rs = array(
+            'ret'   => $this->ret,
+            'data'  => is_array($this->data) && empty($this->data) ? (object)$this->data : $this->data, // # 67 优化
+            'msg'   => $this->msg,
+        );
 
         if (!empty($this->debug)) {
-            $responseData['debug'] = $this->debug;
+            $rs['debug'] = $this->debug;
         }
 
-        return $responseData;
+        return $rs;
     }
 
 	/**

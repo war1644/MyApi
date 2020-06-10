@@ -22,6 +22,8 @@ use PhalApi\Database\NotORMDatabase;
 
 defined('API_ROOT') || define('API_ROOT', dirname(__FILE__));
 
+defined('API_MODE') || define('API_MODE', 'test'); 
+
 require API_ROOT . '/../vendor/autoload.php';
 
 $loader = new Loader(API_ROOT);
@@ -54,6 +56,11 @@ $di->debug = true;
 
 $di->notorm = function() {
     $notorm = new NotORMDatabase(\PhalApi\DI()->config->get('dbs'), true);
+    return $notorm;
+};
+
+$di->notorm_other = function() {
+    $notorm = new NotORMDatabase(\PhalApi\DI()->config->get('dbs_other'), true);
     return $notorm;
 };
 
@@ -172,3 +179,6 @@ class ImplExceptionFilter implements Filter {
         throw new BadRequestException('just for test');
     }
 }
+
+require_once dirname(__FILE__) . '/phpunit_helper.php';
+

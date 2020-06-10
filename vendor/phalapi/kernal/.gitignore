@@ -4,4 +4,6 @@ vendor/
 .buildpath
 
 tests/src/Cache/cache
+tests/src/Helper/docs
 
+.DS_Store

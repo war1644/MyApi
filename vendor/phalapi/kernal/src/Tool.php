@@ -91,6 +91,25 @@ class Tool {
     }
 
     /**
+     * 获取绝对路径，即便不存在的路径也可以转换，而realpath()函数不支持
+     * @link https://www.php.net/manual/zh/function.realpath.php
+     */
+    public static function getAbsolutePath($path) {
+        $path = str_replace(array('/', '\\'), DIRECTORY_SEPARATOR, $path);
+        $parts = array_filter(explode(DIRECTORY_SEPARATOR, $path), 'strlen');
+        $absolutes = array();
+        foreach ($parts as $part) {
+            if ('.' == $part) continue;
+            if ('..' == $part) {
+                array_pop($absolutes);
+            } else {
+                $absolutes[] = $part;
+            }
+        }
+        return implode(DIRECTORY_SEPARATOR, $absolutes);
+    }
+
+    /**
      * 删除目录以及子目录等所有文件
      *
      * - 请注意不要删除重要目录！
@@ -115,6 +134,33 @@ class Tool {
     }
 
     /**
+     * 排除数组中不需要的键
+     * @param array $array 待处理的数组，可以是一维数组或二维数组
+     * @param string|array $excludeKeys 待排除的键，字符串时使用英文逗号分割
+     * @return array 排除key后的新数组
+     */
+    public static function arrayExcludeKeys($array, $excludeKeys) {
+        if (!is_array($array)) {
+            return $array;
+        }
+
+        $excludeKeys = is_array($excludeKeys) ? $excludeKeys : explode(',', $excludeKeys);
+        foreach ($array as $key => $value) {
+            if (is_array($value)) {
+                foreach ($array[$key] as $subKey => $subValue) {
+                    if (in_array($subKey, $excludeKeys, TRUE)) {
+                        unset($array[$key][$subKey]);
+                    }
+                }
+            } else if (in_array($key, $excludeKeys, TRUE)) {
+                unset($array[$key]);
+            }
+        }
+
+        return $array;
+    }
+
+    /**
      * 数组转XML格式
      * 
      * @param array $arr 数组
@@ -131,7 +177,7 @@ class Tool {
         }
         $xml .= "<$root>";
         foreach ($arr as $key=>$val){
-            if(is_array($val)){
+            if(is_array($val) || is_object($val)){
                 $xml.=self::arrayToXml($val,"$key",$num);
             } else {
                 $xml.="<".$key."><![CDATA[".$val."]]></".$key.">";

@@ -13,6 +13,16 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
 
     public static $queryTimes = 0;
 
+    /**
+     * @var string $aliasTableName 数据库表别名
+     */
+    protected $aliasTableName;
+
+    /**
+     * @var array $leftJoins 关联查询设置，每组格式对应一条LEFT JOIN语句，例如：LEFT JOIN table AS B ON A.id = B.a_id
+     */
+    protected $leftJoins = array();
+
     /** Create table result
      *
      * @param string $table
@@ -100,6 +110,11 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
     }
 
     protected function createJoins($val){
+        // @dogstar 20200226 优先使用手工指定的关联查询
+        if (!empty($this->leftJoins)) {
+            return empty($this->aliasTableName) ? $this->leftJoins : array_merge(array(" AS {$this->aliasTableName}"), $this->leftJoins);
+        }
+
         $return = array();
         preg_match_all('~\\b([a-z_][a-z0-9_.:]*[.:])[a-z_*]~i', $val, $matches);
         foreach($matches[1] as $names){
@@ -187,23 +202,43 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
                 if($parameters){
                     $debug .= " -- " . implode(", ", array_map(array($this, 'quote'), $parameters));
                 }
-                $pattern = '(^' . preg_quote(dirname(__FILE__)) . '(\\.php$|[/\\\\]))'; // can be static
+                $preBacktrace = array();
+                $findBacktrace = array();
                 foreach(debug_backtrace() as $backtrace){
-                    if(isset($backtrace["file"]) && !preg_match($pattern, $backtrace["file"])){ // stop on first file outside NotORM source codes
+                    // 排除框架本身的
+                    if (isset($backtrace['class']) && !in_array($backtrace['class'], array('NotORM_Result', 'PhalApi\Model\NotORMModel'))) {
+                        $findBacktrace = $backtrace;
                         break;
                     }
+                    $preBacktrace = $backtrace;
                 }
                 /** @var array $backtrace */
                 //error_log("{$backtrace['file']}:{$backtrace['line']}:$debug\n", 0);
                 //if ($this->notORM->debug) echo "$debug<br />\n";    //@dogstar 2014-10-31
 
+                // @dogstar 20190523 更细致的SQL上下文信息
                 $debugTrace['sql'] = $debug;
+                if (!empty($findBacktrace)) {
+                    $debugTrace['sql'] = sprintf('%s(%s):    %s%s    %s    %s',
+                        isset($findBacktrace['file'])       ? $findBacktrace['file']            : (isset($preBacktrace['file']) ? $preBacktrace['file'] : '__index.php'),   // 在哪个文件
+                        isset($findBacktrace['line'])       ? $findBacktrace['line']            : (isset($preBacktrace['line']) ? $preBacktrace['line'] : 0),               // 在哪一行
+                        isset($findBacktrace['class'])      ? $findBacktrace['class'] . '::'    : '',              // 在哪个类
+                        isset($findBacktrace['function'])   ? $findBacktrace['function'] . '()' : '__main()',      // 在哪个方法
+                        $this->table,                                                                              // 针对哪个表
+                        $debug                                                                                     // 执行了什么SQL
+                    );
+                }
             }elseif(call_user_func($this->notORM->debug, $query, $parameters) === false){
                 return false;
             }
         }
 
         $return = $this->notORM->connection->prepare($query);
+
+        // @dogstar 20190917 失败时，抛出异常
+        if ($return === FALSE) {
+            throw new \PDOException('PDO failed to prepare: ' . $query);
+        }
 
         //对于替换参数进行处理   @喵了个咪 2015-12-25
         $sum = 1;
@@ -248,7 +283,7 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
         if($this->notORM->debug){
             $debugTrace['endTime'] = microtime(true);
 
-            $sqlInfo = sprintf("[%s - %sms]%s", 
+            $sqlInfo = sprintf("[#%s - %sms - SQL]%s", 
                 self::$queryTimes, 
                 round(($debugTrace['endTime'] - $debugTrace['startTime']) * 1000, 2), 
                 $debugTrace['sql']
@@ -294,13 +329,30 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
         return $this->notORM->connection->quote($val);
     }
 
-    /** Shortcut for call_user_func_array(array($this, 'insert'), $rows)
+    /**
+     * 执行带结果的原生sql，可用于插入、更新、删除等执行性的语句 @dogstar 20190329
      *
-     * @param array
+     * @param $sql        string
+     * @param $parameters   array
      *
      * @return int number of affected rows or false in case of an error
      */
-    function insert_multi(array $rows){
+    function executeSql($sql, $parameters = array()) {
+        $return = $this->query($sql, $parameters);
+        if(!$return){
+            return false;
+        }
+        return $return->rowCount();
+    }
+
+    /** Shortcut for call_user_func_array(array($this, 'insert'), $rows)
+     *
+     * @param array $rows 待批量添加的数据
+     * @param boolean $isIgnore 是否在插入时使用IGNORE
+     *
+     * @return int number of affected rows or false in case of an error
+     */
+    function insert_multi(array $rows, $isIgnore = false){
         if($this->notORM->freeze){
             return false;
         }
@@ -337,8 +389,12 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
                 ? "({$quoteChar}" . implode("{$quoteChar}, {$quoteChar}", array_keys($data)) . "{$quoteChar}) VALUES " . implode(", ", $values) 
                 : "DEFAULT VALUES";
         }
+
+        // @dogstar 20181208
+        $ignoreSql = $isIgnore ? 'IGNORE' : '';
+
         // requires empty $this->parameters
-        $return = $this->query("INSERT INTO $this->table $insert", $parameters);
+        $return = $this->query("INSERT $ignoreSql INTO $this->table $insert", $parameters);
         if(!$return){
             return false;
         }
@@ -414,6 +470,42 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
             return false;
         }
         return $return->rowCount();
+    }
+
+    /**
+     * 更新单个计数器，更友好的+1或-1或更新计数器的操作
+     *
+     * @param string $column
+     * @param int/float $number
+     *
+     @ return int number of affected rows or false in case of an error 
+     */
+    function updateCounter($column, $number = 1) {
+        return $this->update(array($column => $this->createLiteral($column, $number)));
+    }
+
+    /**
+     * 更新多个计数器
+     *
+     * @param array $data
+     *
+     @ return int number of affected rows or false in case of an error 
+     */
+    function updateMultiCounters(array $data) {
+        $updateData = array();
+
+        // 转换
+        foreach ($data as $column => $number) {
+            $updateData[$column] = $this->createLiteral($column, $number); 
+        }
+
+        return $this->update($updateData);
+    }
+
+    protected function createLiteral($column, $number) {
+        return new NotORM_Literal(
+            sprintf('%s %s %s', $column, $number >= 0 ? '+' : '-', abs($number))
+        );
     }
 
     /**
@@ -694,6 +786,15 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
             $this->offset = +$offset;
         }
         return $this;
+    }
+
+    /**
+     * 分页
+     * @param int $page 第几页
+     * @param int $perpage 每页多少条
+     */
+    function page($page = 1, $perpage = 100) {
+        return $this->limit(($page - 1) * $perpage, $perpage);
     }
 
     /** Set group clause, more calls rewrite old values
@@ -1112,4 +1213,84 @@ class NotORM_Result extends NotORM_Abstract implements Iterator, ArrayAccess, Co
         }
     }
 
+    /**
+     * 获取当前PDO连接
+     * @return \PDO
+     */
+    function getConn()
+    {
+        return $this->notORM->connection;
+    }
+
+    /**
+     * Execute an SQL statement and return the number of affected rows
+     * @param string $query
+     * @return int|false
+     */
+    function exec($query)
+    {
+        $conn = $this->getConn();
+        $sql = $conn->quote($query);
+        return $conn->exec($sql);
+    }
+
+    /** ------------------ 事务操作 ------------------ **/
+
+    /**
+     * 开启数据库事务
+     * @return bool
+     */
+    public function beginTransaction()
+    {
+        return $this->getConn()->beginTransaction();
+    }
+
+    /**
+     * 提交数据库事务
+     * @return bool
+     */
+    public function commit()
+    {
+        return $this->getConn()->commit();
+    }
+
+    /**
+     * 回滚数据库事务
+     * @return bool
+     */
+    public function rollBack()
+    {
+        return $this->getConn()->rollBack();
+    }    
+
+    /** ------------------ 关联查询 @dogstar 20200226 ------------------ **/
+
+    /**
+     * 当前表的别名，当进行关联查询时需要提前设置
+     * @param $aliasTableName 当前表的别名
+     */
+    public function alias($aliasTableName) {
+        $this->aliasTableName = $aliasTableName;
+        return $this;
+    }
+
+    /**
+     * 关联查询，支持关联多张表
+     * @param string $joinTableName 需要关联的表名
+     * @param string $aliasJoinTableName 关联表名的别名
+     * @param string $onWhere 关联ON条件
+     */
+    public function leftJoin($joinTableName, $aliasJoinTableName, $onWhere) {
+        $return = array();
+
+        // 自动添加表前缀
+        $parent = $this->table;
+        $table = $this->notORM->structure->getReferencedTable($joinTableName, $parent);
+        $leftJoinSql = " LEFT JOIN $table " . (!empty($aliasJoinTableName) ? "AS $aliasJoinTableName" : "") . " ON $onWhere";
+
+        // 追加关联查询
+        $this->leftJoins[] = $leftJoinSql;
+
+        return $this;
+    }
 }

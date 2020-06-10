@@ -6,12 +6,8 @@ $vendorDir = dirname(dirname(__FILE__));
 $baseDir = dirname($vendorDir);
 
 return array(
-    'Video\\' => array($baseDir . '/src/Video'),
-    'User\\' => array($baseDir . '/src/User'),
-    'Platform\\' => array($baseDir . '/src/Platform'),
     'PhalApi\\NotORM\\' => array($vendorDir . '/phalapi/notorm/src'),
     'PhalApi\\' => array($vendorDir . '/phalapi/kernal/src'),
     'Open\\' => array($baseDir . '/src/Open'),
-    'Mobile\\' => array($baseDir . '/src/Mobile'),
     'Common\\' => array($baseDir . '/Common'),
 );

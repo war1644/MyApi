@@ -15,9 +15,20 @@ use PhalApi\Exception\InternalServerErrorException;
 
 class FileCache implements Cache {
 
+    /**
+     * @var string $folder 文件缓存保存的目录
+     */
     protected $folder;
 
+    /**
+     * @var string $prefix 文件缓存的key前缀
+     */
     protected $prefix;
+
+    /**
+     * @var boolean $enableFileNameFormat 是否格式化文件名
+     */
+    protected $enableFileNameFormat = TRUE;
 
     public function __construct($config) {
         $this->folder = rtrim($config['path'], '/');
@@ -29,6 +40,7 @@ class FileCache implements Cache {
         }
 
         $this->prefix = isset($config['prefix']) ? $config['prefix'] : 'phapapi';
+        $this->enableFileNameFormat = isset($config['enable_file_name_format']) ? (boolean)$config['enable_file_name_format'] : $this->enableFileNameFormat;
     }
 
     public function set($key, $value, $expire = 600) {
@@ -76,6 +88,16 @@ class FileCache implements Cache {
         @unlink($filePath);
     }
 
+    /**
+     * 拉取缓存，拉取后同时删除缓存
+     * @return minxed|NULL 缓存不存在时返回NULL
+     */
+    public function pull($key) {
+        $value = $this->get($key);
+        $this->delete($key);
+        return $value;
+    }
+
 	/**
 	 * 考虑到Linux同一目录下的文件个数限制，这里拆分成1000个文件缓存目录
 	 */
@@ -86,7 +108,12 @@ class FileCache implements Cache {
             mkdir($cacheFolder, 0777, TRUE);
         }
 
-        return $cacheFolder . DIRECTORY_SEPARATOR . md5($key) . '.dat';
+        // 避免撞key，增强唯一性
+        $filename = $this->enableFileNameFormat ? 
+            sprintf('%s_%s_%s_%s.dat', md5($this->prefix), strlen($this->prefix), md5($key), strlen($key))
+            : $this->prefix . $key;
+
+        return $cacheFolder . DIRECTORY_SEPARATOR . $filename;
     }
 
     protected function createCacheFileFolder() {

@@ -39,9 +39,17 @@ class Open extends CommonApi {
      * @desc 提取某月的加班信息，该接口只会显示未提交的加班信息，已发送协同的则不显示
      * @author dxq1994@gmail.com
      * @version v2018/8/16 上午10:33 初版
-     * @return array 加班信息
+     * @return array info 加班信息
+     * @return string msg 提示信息
+     * @return int info.a 哪月
      */
 	public function overtime() {
+        return resFormat([
+            'a'=>1,
+            'b'=>1,
+            'c'=>1,
+            'd'=>1
+        ]);
         return \Open\Domain\Open::overtimeList($this);
 	}
 
@@ -63,6 +71,7 @@ class Open extends CommonApi {
      * @return array
      */
     public function test() {
+
         return \Open\Domain\Open::test();
     }
 

@@ -39,6 +39,7 @@ class PhpUnderControl_PhalApiModelNotORM_Test extends \PHPUnit_Framework_TestCas
 
     protected function tearDown()
     {
+         // var_dump(\PhalApi\DI()->tracer->getSqls());
     }
 
 
@@ -55,6 +56,9 @@ class PhpUnderControl_PhalApiModelNotORM_Test extends \PHPUnit_Framework_TestCas
         $this->assertNotEmpty($rs);
 
         $this->assertEquals('welcome here', $rs['content']);
+
+        $rs = $this->phalApiModelNotORM->get(4040404);
+        $this->assertSame(FALSE, $rs);
     }
 
     /**
@@ -71,6 +75,36 @@ class PhpUnderControl_PhalApiModelNotORM_Test extends \PHPUnit_Framework_TestCas
 
         $this->assertEquals('phpunit', $rs['content']);
         $this->assertEquals(array('year' => 2015), $rs['ext_data']);
+    }
+
+    public function testMultiInsert()
+    {
+        $data = array(
+            array('content' => 'phpunit_insert_1', 'ext_data' => array('year' => 2015)),
+            array('content' => 'phpunit_insert_2', 'ext_data' => array('year' => 2018))
+        );
+
+        $rs = \PhalApi\DI()->notorm->notormtest->insert_multi($data);
+
+        // 插入成功，返回的条目数量
+        $this->assertEquals(2, $rs);
+    }
+
+    /**
+     * PhalApi 2.5.0 新特性
+     */
+    public function testMultiInsertAndIgnore()
+    {
+        $data = array(
+            array('content' => 'phpunit_insert_ignore_1', 'ext_data' => array('year' => 2015)),
+            array('content' => 'phpunit_insert_ignore_2', 'ext_data' => array('year' => 2018))
+        );
+        $isIgnore = true;
+
+        $rs = \PhalApi\DI()->notorm->notormtest->insert_multi($data, $isIgnore);
+
+        // 插入成功，返回的条目数量
+        $this->assertEquals(2, $rs);
     }
 
     /**
@@ -98,6 +132,8 @@ class PhpUnderControl_PhalApiModelNotORM_Test extends \PHPUnit_Framework_TestCas
         $id = '100';
 
         $rs = $this->phalApiModelNotORM->delete($id);
+
+        $this->assertTrue(true);
     }
 
     /**
@@ -120,5 +156,173 @@ class PhpUnderControl_PhalApiModelNotORM_Test extends \PHPUnit_Framework_TestCas
             array('userfriends', '\\App\\Model\\UserFriends'),
             array('user_message', '\\App\\Fun\\Model\\User\\Message'),
         );
+    }
+
+    /**
+     * 执行带结果的原生sql，只要用于插入、更新、删除等
+     */
+    public function testExcuteSql()
+    {
+        // 原生插入
+        $sql = "INSERT  INTO tbl_notormtest (`content`, `ext_data`) VALUES ('phpunit_e_sql_1', '" . '{\"year\":2019}' . "');";
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql);
+        $this->assertEquals(1, $rs);
+
+        // 原生绑定参数插入
+        $sql = "INSERT  INTO tbl_notormtest (`content`, `ext_data`) VALUES (:content, :ext_data);";
+        $params = array(':content' => 'phpunit_e_sql_2', ':ext_data' => '{\"year\":2020}');
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql, $params);
+        $this->assertEquals(1, $rs);
+
+        // 原生更新
+        $sql = "UPDATE tbl_notormtest SET `content` = 'phpunit_e_sql_3' WHERE (content = ? OR content = ?);";
+        $params = array('phpunit_e_sql_1', 'phpunit_e_sql_2');
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql, $params);
+        $this->assertEquals(2, $rs);
+
+        // 如果是查询呢？只会返回影响的行数，而非结果
+        $sql = "SELECT * FROM tbl_notormtest WHERE content IN ('phpunit_e_sql_3')";
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql, $params);
+        $this->assertEquals(2, $rs);
+
+        // 原生删除
+        $sql = "DELETE FROM tbl_notormtest WHERE (content IN ('phpunit_e_sql_1', 'phpunit_e_sql_2'));";
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql);
+        $this->assertEquals(0, $rs);
+
+        $sql = "DELETE FROM tbl_notormtest WHERE (content IN ('phpunit_e_sql_3'));";
+        $rs = \PhalApi\DI()->notorm->notormtest->executeSql($sql);
+        $this->assertEquals(2, $rs);
+    }
+
+    public function testUpdateCounter()
+    {
+        $oldData = \PhalApi\DI()->notorm->notormtest->where('id', 1)->fetchPairs('id', 'year');
+
+        $rs = \PhalApi\DI()->notorm->notormtest->where('id', 1)->updateCounter('year', 1);
+        $afterIncdData = \PhalApi\DI()->notorm->notormtest->where('id', 1)->fetchPairs('id', 'year');
+        $this->assertEquals($afterIncdData[1], $oldData[1] + 1);
+        $this->assertEquals(1, $rs);
+
+
+        $rs = \PhalApi\DI()->notorm->notormtest->where('id', 1)->updateCounter('year', -1);
+        $afterDecData = \PhalApi\DI()->notorm->notormtest->where('id', 1)->fetchPairs('id', 'year');
+        $this->assertEquals($afterDecData[1], $afterIncdData[1] - 1);
+        $this->assertEquals(1, $rs);
+    }
+
+    public function testUpdateMultiCounters()
+    {
+        $oldData = \PhalApi\DI()->notorm->notormtest->where('id', 1)->fetchPairs('id', 'year');
+
+        $rs = \PhalApi\DI()->notorm->notormtest->where('id', 1)->updateMultiCounters(array('year' => 2));
+        $this->assertEquals(1, $rs);
+
+        $rs = \PhalApi\DI()->notorm->notormtest->where('id', 1)->updateMultiCounters(array('year' => -2));
+        $this->assertEquals(1, $rs);
+
+        $newData = \PhalApi\DI()->notorm->notormtest->where('id', 1)->fetchPairs('id', 'year');
+
+        $this->assertEquals($newData[1], $oldData[1]);
+    }
+
+    // pgsql会有问题？
+    public function testWhereMixConstantAndVariable()
+    {
+        $id = 2;
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->where('content', 'phpunit_insert_1')
+            ->where('id', 1)
+            ->where('id > ?', $id)
+            ->where('id IS NOT NULL')
+            //->where('id IS NOT ?', NULL)
+            ->count('*');
+
+        $this->assertGreaterThan(-1, $rs);
+    }
+
+    /**
+     * @expectedException PDOException
+     */
+    public function testWhereMixConstantAndVariableWrongAfterPDOString()
+    {
+        $id = 2;
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->where('content', 'phpunit_insert_1')
+            //->where('id', 1)
+            //->where('id > ?', $id)
+            ->where('id IS NOT ?', NULL)
+            ->count('*');
+
+        $this->assertGreaterThan(-1, $rs);
+    }
+
+    public function testInStringArray()
+    {
+        $rs = \PhalApi\DI()->notorm->notormtest->where('content', array('phpunit_insert_1', 'phpunit_insert_2'))->fetchOne();
+        $this->assertNotEmpty($rs);
+    }
+
+    public function testInIntArray()
+    {
+        $rs = \PhalApi\DI()->notorm->notormtest->where('id', array(1, 2, 3))->fetchOne();
+        $this->assertNotEmpty($rs);
+        $this->assertNotEmpty($rs);
+    }
+
+    public function testJoinOneTable() {
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->select('A.id AS id, B.title')
+            ->alias('A')
+            ->leftJoin('joindata', 'B', 'A.id = B.parent_id')
+            ->where('A.id', array(1, 2, 3))
+            ->fetchAll();
+
+        $this->assertNotEmpty($rs);
+        foreach ($rs as $it) {
+            $this->assertArrayHasKey('id', $it);
+            $this->assertArrayHasKey('title', $it);
+        }
+    }
+
+    public function testJoinOneTableNotAlias() {
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->select('title')
+            //->alias('A')
+            ->leftJoin('joindata', '', 'tbl_notormtest.id = tbl_joindata.parent_id')
+            ->where('tbl_joindata.id', array(1, 2, 3))
+            ->fetchAll();
+
+        $this->assertNotEmpty($rs);
+        foreach ($rs as $it) {
+            $this->assertArrayHasKey('title', $it);
+        }
+    }
+
+    public function testJoinOneTableCount() {
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->alias('A')
+            ->leftJoin('joindata', 'B', 'A.id = B.parent_id')
+            ->where('A.id', array(1, 2, 3))
+            ->count();
+
+        $this->assertNotEmpty($rs);
+    }
+
+    public function testJoinTowTable() {
+        $rs = \PhalApi\DI()->notorm->notormtest
+            ->select('A.id AS id, B.title, C.title AS c_title')
+            ->alias('A')
+            ->leftJoin('joindata', 'B', 'A.id = B.parent_id')
+            ->leftJoin('joindata_copy', 'C', 'A.id = C.parent_id')
+            ->where('A.id', array(1, 2, 3))
+            ->fetchAll();
+
+        $this->assertNotEmpty($rs);
+        foreach ($rs as $it) {
+            $this->assertArrayHasKey('id', $it);
+            $this->assertArrayHasKey('title', $it);
+            $this->assertArrayHasKey('c_title', $it);
+        }
     }
 }

@@ -71,9 +71,9 @@ use PhalApi\NotORM\Lite as NotORMLite;
 
 class NotORMDatabase /** implements Database */ {
 
-	/**
-	 * @var NotORM $_notorms NotORM的实例池
-	 */
+    /**
+     * @var NotORM $_notorms NotORM的实例池
+     */
     protected $_notorms = array();
 
     /**
@@ -95,6 +95,11 @@ class NotORMDatabase /** implements Database */ {
      * @var boolean 是否保持原来数据库结果集中以主键为KEY的返回方式（默认不使用）
      */
     protected $isKeepPrimaryKeyIndex = FALSE;
+
+    /**
+    * @var array $tablenameAliasMap 表名的别名映射关系，主要用于分表回退时的缺省表名修正，避免因类缓存而导致bug，[原来的完全表名 => 修正的新表名]
+    */
+    protected $tablenameAliasMap = array();
 
     /**
      * @param array $configs 数据库配置 
@@ -126,8 +131,11 @@ class NotORMDatabase /** implements Database */ {
             $this->_notorms[$notormKey]->isKeepPrimaryKeyIndex = $this->isKeepPrimaryKeyIndex;
 
             if ($router['isNoSuffix']) {
+                $this->tablenameAliasMap[$name] = $tableName; // 纪录修正的映射关系，来源于小白接口发现的bug
                 $name = $tableName;
             }
+        } else {
+            $name = isset($this->tablenameAliasMap[$name]) ? $this->tablenameAliasMap[$name] : $name; // 缓存下的修正
         }
 
         return $this->_notorms[$notormKey]->$name;
@@ -174,6 +182,13 @@ class NotORMDatabase /** implements Database */ {
     protected function getDBRouter($tableName, $suffix) {
         $rs = array('prefix' => '', 'key' => '', 'pdo' => NULL, 'isNoSuffix' => FALSE);
 
+        if (preg_match('/^(\S+)\.(\S+)$/', $tableName, $match)) {
+            $server = $match[1];
+            if (!isset($this->_configs['tables'][$tableName])) {
+                $this->_configs['tables'][$tableName] = array('map' => array(array('db' => $server)));
+            }
+        }
+
         $defaultMap = !empty($this->_configs['tables']['__default__']) 
             ? $this->_configs['tables']['__default__'] : array();
         $tableMap = !empty($this->_configs['tables'][$tableName]) 
@@ -184,6 +199,12 @@ class NotORMDatabase /** implements Database */ {
                 \PhalApi\T('No table map config for {tableName}', array('tableName' => $tableName))
             );
         }
+
+        // 是否依然保留分表后缀，即便分表策略不存在时
+        // 旧版本是不保留，PhalApi 2.12.0 版本起支持配置成依然保留
+        $keepSuffixIfNoMap = isset($tableMap['keep_suffix_if_no_map']) 
+            ? $tableMap['keep_suffix_if_no_map'] 
+            : (isset($defaultMap['keep_suffix_if_no_map']) ? $defaultMap['keep_suffix_if_no_map'] : FALSE);
 
         $dbKey = NULL;
         $dbDefaultKey = NULL;
@@ -209,10 +230,10 @@ class NotORMDatabase /** implements Database */ {
                 break;
             }
         }
-        //try to use default map if no perfect match
+        // 未匹配时，使用默认路由
         if ($dbKey === NULL) {
             $dbKey = $dbDefaultKey;
-            $rs['isNoSuffix'] = TRUE;
+            $rs['isNoSuffix'] = !$keepSuffixIfNoMap;
         }
 
         if ($dbKey === NULL) {
@@ -261,34 +282,70 @@ class NotORMDatabase /** implements Database */ {
 
     /**
      * 针对MySQL的PDO链接，如果需要采用其他数据库，可重载此函数
+     * @link https://www.php.net/manual/en/book.pdo.php
      * @param array $dbCfg 数据库配置
      * @return PDO
      */
     protected function createPDOBy($dbCfg) {
+        // 默认mysql
+        $type = !empty($dbCfg['type']) ? strtolower($dbCfg['type']) : 'mysql';
         $dsn = sprintf('mysql:dbname=%s;host=%s;port=%d',
             $dbCfg['name'], 
             isset($dbCfg['host']) ? $dbCfg['host'] : 'localhost', 
             isset($dbCfg['port']) ? $dbCfg['port'] : 3306
         );
-        $charset = isset($dbCfg['charset']) ? $dbCfg['charset'] : 'UTF8';
-
-        // 支持sql server
-        if (!empty($dbCfg['type']) && strtolower($dbCfg['type']) == 'sqlserver') {
+        
+        if ($type == 'sqlserver' || $type == 'sqlsrv') {  // 支持sql server
             $dsn = sprintf('sqlsrv:Server=%s,%d;Database=%s',
                 isset($dbCfg['host']) ? $dbCfg['host'] : 'localhost', 
                 isset($dbCfg['port']) ? $dbCfg['port'] : 1433, 
                 $dbCfg['name']
             );
+        } else if ($type == 'dblib_sqlserver') {  // 支持sql server(通过dblib驱动)
+            $dsn = sprintf('dblib:host=%s:%d;dbname=%s',
+                isset($dbCfg['host']) ? $dbCfg['host'] : 'localhost', 
+                isset($dbCfg['port']) ? $dbCfg['port'] : 1433, 
+                $dbCfg['name']
+            );
+        } else if ($type == 'pgsql') {  // 支持postgreSQL
+            $dsn = sprintf('pgsql:dbname=%s;host=%s;port=%d',
+                $dbCfg['name'],
+                isset($dbCfg['host']) ? $dbCfg['host'] : 'localhost',
+                isset($dbCfg['port']) ? $dbCfg['port'] : 3306
+            );
         }
 
-        $pdo = new PDO(
-            $dsn,
-            $dbCfg['user'],
-            $dbCfg['password']
+        // 具体驱动的连接选项
+        $defaultOptions = array(
+            \PDO::ATTR_TIMEOUT => 30,
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
         );
-        $pdo->exec("SET NAMES '{$charset}'");
+        $driverOptions = isset($dbCfg['driver_options']) && is_array($dbCfg['driver_options']) ? $dbCfg['driver_options'] : array();
+        $driverOptions = $driverOptions + $defaultOptions; // 注意：这里只能使用相加，不能使用array_merge()，因为下标是数值
+
+        // 创建PDO连接
+        $pdo = new \PDO($dsn, $dbCfg['user'], $dbCfg['password'], $driverOptions);
+
+        // 取消将数值转换为字符串
+        if (empty($dbCfg['pdo_attr_string'])) {
+            $pdo->setAttribute(\PDO::ATTR_STRINGIFY_FETCHES, false);
+            $pdo->setAttribute(\PDO::ATTR_EMULATE_PREPARES, false);
+        }
+
+        // 设置编码
+        $this->setDatabaseCharset($type, $dbCfg, $pdo);
 
         return $pdo;
+    }
+
+    protected function setDatabaseCharset($type, $dbCfg, $pdo) {
+        $charset = isset($dbCfg['charset']) ? $dbCfg['charset'] : 'UTF8';
+        if ($type == 'sqlserver' || $type == 'sqlsrv') {
+            // fixed: 'NAMES' is not a recognized SET option.
+            ini_set('mssql.charset', $charset);
+        } else {
+            $pdo->exec("SET NAMES '{$charset}'");
+        }
     }
 
     /**
@@ -317,6 +374,12 @@ class NotORMDatabase /** implements Database */ {
     public function keepPrimaryKeyIndex() {
         $this->isKeepPrimaryKeyIndex = TRUE;
         return $this;
+    }
+
+    /** ------------------ 配置相关 ------------------ **/
+
+    public function getConfigs() {
+        return $this->_configs;
     }
 
     /** ------------------ 事务操作 ------------------ **/

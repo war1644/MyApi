@@ -63,6 +63,28 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
         $this->assertSame('PhalApi测试', $rs);
     }
 
+    /**
+     * @group testFormatString
+     */
+    public function testFormatStringAfterParse()
+    {
+        $rs = Parser::format(
+            'testKey', array('name' => 'testKey', 'on_after_parse' => 'strtolower|trim'), array('testKey' => 'PhalApi测试 '));
+
+        $this->assertSame('phalapi测试', $rs);
+    }
+
+    /**
+     * @group testFormatString
+     */
+    public function testFormatStringAfterParseCallback()
+    {
+        $rs = Parser::format(
+            'testKey', array('name' => 'testKey', 'on_after_parse' => function ($value) { return strtolower(trim($value)); }), array('testKey' => 'PhalApi测试 '));
+
+        $this->assertSame('phalapi测试', $rs);
+    }
+
 
     /**
      * @group testFormatStringMinMax
@@ -72,6 +94,18 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
     {
         $rs = Parser::format(
             'testKey', array('name' => 'testKey', "max" => 8, 'min' => 8, "format" => 'utf8'), array('testKey' => 'PhalApi测试'));
+
+    }
+
+    /**
+     * @group testFormatStringMinMax
+     * @expectedException \PhalApi\Exception\BadRequestException
+     * @expectedExceptionMessage 显示此错误
+     */
+    public function testFormatStringExceptionMinMaxWithMessage()
+    {
+        $rs = Parser::format(
+            'testKey', array('name' => 'testKey', "max" => 8, 'min' => 8, "format" => 'utf8', 'message' => '显示此错误'), array('testKey' => 'PhalApi测试'));
 
     }
 
@@ -98,6 +132,17 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
     /**
      * @group testFormatString
      * @expectedException \PhalApi\Exception\BadRequestException
+     * @expectedExceptionMessage 字符串长度过短
+     */
+    public function testFormatStringWithParamExceptionLtMinWithMessage()
+    {
+        $rs = Parser::format(
+            'testKey', array('name' => 'testKey', 'min' => 8, 'message' => '字符串长度过短'), array('testKey' => '2014'));
+    }
+
+    /**
+     * @group testFormatString
+     * @expectedException \PhalApi\Exception\BadRequestException
      */
     public function testFormatStringWithParamExceptionGtMax()
     {
@@ -105,7 +150,21 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
         $rule = array('name' => 'testKey', 'max' => 2, );
 
         $rs = Parser::format(
-            'testKey', array('name' => 'testKey', 'max' => 2), array('testKey' => 2014));
+            'testKey', $rule, array('testKey' => $value));
+    }
+
+    /**
+     * @group testFormatString
+     * @expectedException \PhalApi\Exception\BadRequestException
+     * @expectedExceptionMessage 字符串长度过长
+     */
+    public function testFormatStringWithParamExceptionGtMaxWithMessage()
+    {
+        $value = '2014';
+        $rule = array('name' => 'testKey', 'max' => 2, 'message' => '字符串长度过长');
+
+        $rs = Parser::format(
+            'testKey', $rule, array('testKey' => $value));
     }
 
     /**
@@ -359,6 +418,17 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
             'testKey', array('type' => 'enum', 'name' => 'testKey', 'range' => array('ios', 'android')), array('testKey' => 'pc'));
     }
 
+    /**
+     * @group testFormatEnum
+     * @expectedException PhalApi\Exception\BadRequestException
+     * @expectedExceptionMessage 范围不对
+     */
+    public function testFormatEnumWithParamExceptionWithMessage()
+    {
+        $rs = Parser::format(
+            'testKey', array('type' => 'enum', 'name' => 'testKey', 'range' => array('ios', 'android', 'message' => '范围不对')), array('testKey' => 'pc'));
+    }
+
     public function testFormatAllTypes()
     {
         $params = array(
@@ -461,6 +531,16 @@ class PhpUnderControl_PhalApiRequestVar_Test extends \PHPUnit_Framework_TestCase
             array('testKey' => 1)
         );
 
+    }
+
+    public function testParseOnAfterParse()
+    {
+        $rule = array('name' => 'testKey', 'type' => 'array', 'format' => 'explode', 'on_after_parse' => 'array_unique');
+
+        $rs = Parser::format('testKey', $rule, array('testKey' => 'A,A,A,B,B,C'));
+
+        $this->assertCount(3, $rs);
+        $this->assertCount(3, array_intersect($rs, array('A', 'B', 'C')));
     }
 }
 

@@ -13,27 +13,14 @@ class ComposerStaticInit6835957bc29912b8a4cd2dd758af2e80
     );
 
     public static $prefixLengthsPsr4 = array (
-        'V' => 
-        array (
-            'Video\\' => 6,
-        ),
-        'U' => 
-        array (
-            'User\\' => 5,
-        ),
         'P' => 
         array (
-            'Platform\\' => 9,
             'PhalApi\\NotORM\\' => 15,
             'PhalApi\\' => 8,
         ),
         'O' => 
         array (
             'Open\\' => 5,
-        ),
-        'M' => 
-        array (
-            'Mobile\\' => 7,
         ),
         'C' => 
         array (
@@ -42,18 +29,6 @@ class ComposerStaticInit6835957bc29912b8a4cd2dd758af2e80
     );
 
     public static $prefixDirsPsr4 = array (
-        'Video\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src/Video',
-        ),
-        'User\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src/User',
-        ),
-        'Platform\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src/Platform',
-        ),
         'PhalApi\\NotORM\\' => 
         array (
             0 => __DIR__ . '/..' . '/phalapi/notorm/src',
@@ -65,10 +40,6 @@ class ComposerStaticInit6835957bc29912b8a4cd2dd758af2e80
         'Open\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src/Open',
-        ),
-        'Mobile\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src/Mobile',
         ),
         'Common\\' => 
         array (

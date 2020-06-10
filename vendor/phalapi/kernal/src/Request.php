@@ -110,6 +110,16 @@ class Request {
      * @return array
      */
     protected function genData($data) {
+        // 兼容接收JSON的参数 @dogstar 20191228
+        $postRaw = file_get_contents('php://input');
+        if (!empty($postRaw)) {
+            $postRawArr = json_decode($postRaw, TRUE);
+            if (!empty($postRawArr) && is_array($postRawArr)) {
+                $_REQUEST = array_merge($_REQUEST, $postRawArr);
+                $_POST = array_merge($_POST, $postRawArr);
+            }
+        }
+
         if (!isset($data) || !is_array($data)) {
             return $_REQUEST;
         }
@@ -133,8 +143,8 @@ class Request {
                 continue;
             }
 
-            $headerKey = implode('-', array_map('ucwords', explode('_', strtolower(substr($name, 5)))));
-            $headers[$headerKey] = $value;
+            $key = $this->formatHeaderKey($name);
+            $headers[$key] = $value;
         }
 
         return $headers;
@@ -143,7 +153,7 @@ class Request {
     /**
      * 获取请求Header参数
      *
-     * @param string $key     Header-key值
+     * @param string $key     Header-key值，例如：USER_AGENT，或：User-Agent
      * @param mixed  $default 默认值
      *
      * @return string
@@ -154,7 +164,20 @@ class Request {
             $this->headers = $this->getAllHeaders();
         }
 
+        // 保持一致性，兼容多种格式的KEY输入，提高友好性 @dogstar 2019032
+        if (stripos($key, 'HTTP_') !== FALSE) {
+            $key = $this->formatHeaderKey($key);
+        }
+
         return isset($this->headers[$key]) ? $this->headers[$key] : $default;
+    }
+
+    /**
+     * 格式化HTTP头部KEY
+     * 例如，将HTTP_USER_AGENT转为User-Agent，更贴合浏览器查看的格式
+     */
+    protected function formatHeaderKey($key) {
+        return implode('-', array_map('ucwords', explode('_', strtolower(substr($key, 5)))));
     }
 
     /**
@@ -194,7 +217,11 @@ class Request {
         $rs = Parser::format($rule['name'], $rule, $data);
 
         if ($rs === NULL && (isset($rule['require']) && $rule['require'])) {
-            throw new BadRequestException(T('{name} require, but miss', array('name' => $rule['name'])));
+            // 支持自定义友好的错误提示信息，并支持i18n国际翻译
+            $message = isset($rule['message'])
+                ? T($rule['message'])
+                : T('{name} require, but miss', array('name' => $rule['name'], 'desc' => isset($rule['desc']) ? $rule['desc'] : ''));
+            throw new BadRequestException($message);
         }
 
         return $rs;
@@ -263,7 +290,22 @@ class Request {
      * @return string 接口服务名称，如：Default.Index
      */
     public function getService() {
-        $service = $this->get('service', $this->get('s', 'App.Site.Index'));
+        $service = $this->get('service', $this->get('s'));
+
+        // 尝试根据REQUEST_URI进行路由解析
+        if ($service === NULL) {
+            $service = 'App.Site.Index';
+            if (isset($_SERVER['REQUEST_URI']) && $_SERVER['REQUEST_URI'] !== '/' && \PhalApi\DI()->config->get('sys.enable_uri_match')) {
+                // 截取index.php和问号之间的路径
+                $uri        = $_SERVER['REQUEST_URI'];
+                $startPos   = strpos($uri, 'index.php');
+                $startPos   = $startPos !== FALSE ? $startPos + strlen('index.php') : 0;
+                $endPos     = strpos($uri, '?');
+                $uri        = $endPos != FALSE ? substr($uri, $startPos, $endPos - $startPos) : substr($uri, $startPos);
+
+                $service = str_replace('/', '.', trim($uri, '/'));
+            }
+        }
 
         if (count(explode('.', $service)) == 2) {
             $service = 'App.' . $service;

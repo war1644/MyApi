@@ -22,6 +22,8 @@ class NotORMModel implements Model {
 
     protected static $tableKeys = array();
 
+    /** ---------------- CURD基本操作 ---------------- **/
+
     public function get($id, $fields = '*') {
         $needFields = is_array($fields) ? implode(',', $fields) : $fields;
         $notorm = $this->getORM($id);
@@ -119,15 +121,33 @@ class NotORMModel implements Model {
     /**
      * 快速获取ORM实例，注意每次获取都是新的实例
      * @param string/int $id
-     * @return NotORM_Result
+     * @return \NotORM_Result
      */
     protected function getORM($id = NULL) {
         $table = $this->getTableName($id);
-        return \PhalApi\DI()->notorm->$table;
+        return $this->table($table);
+    }
+
+    /**
+     * 快速获取指定table的ORM实例.
+     * @param string $table 表名可指定服务器,比如demo2.user
+     * @return \NotORM_Result
+     */
+    protected function table($table) {
+        return $this->getNotORM()->$table;
+    }
+
+    /**
+     * 获取当前Model所依赖的数据库实例，尤其当需要同时使用多个数据库时，可重载此方法
+     * @return \PhalApi\Database\NotORMDatabase
+     */
+    protected function getNotORM() {
+        return \PhalApi\DI()->notorm;
     }
 
     protected function loadTableKeys() {
-        $tables = \PhalApi\DI()->config->get('dbs.tables');
+        $configs = $this->getNotORM()->getConfigs();
+        $tables = isset($configs['tables']) ? $configs['tables'] : array();
         if (empty($tables)) {
             throw new InternalServerErrorException(\PhalApi\T('dbs.tables should not be empty'));
         }

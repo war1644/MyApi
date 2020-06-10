@@ -22,6 +22,7 @@ class PhpUnderControl_PhalApiCacheFile_Test extends \PHPUnit_Framework_TestCase
         @unlink(dirname(__FILE__) . '/cache');
 
         $config['path'] = dirname(__FILE__);
+        $config['prefix'] = 'test';
         $this->phalApiCacheFile = new FileCache($config);
     }
 
@@ -96,4 +97,30 @@ class PhpUnderControl_PhalApiCacheFile_Test extends \PHPUnit_Framework_TestCase
         $this->assertSame(NULL, $this->phalApiCacheFile->get($key));
     }
 
+    public function testEnableFileNameFormatNOT()
+    {
+        $config = array();
+        $config['path'] = dirname(__FILE__);
+        $config['prefix'] = 'test_format';
+        $config['enable_file_name_format'] = false;
+        $phalApiCacheFile = new FileCache($config);
+
+        $phalApiCacheFile->set('orinal_cache_key', 2019);
+    }
+
+    public function testPull() {
+        $key = 'pullKeyCache';
+
+        $value = array('name' => 'dogstar');
+
+        $this->phalApiCacheFile->set($key, $value);
+
+        $rs = $this->phalApiCacheFile->pull($key);
+
+        $this->assertEquals('dogstar', $rs['name']);
+
+        $rs = $this->phalApiCacheFile->get($key);
+
+        $this->assertSame(NULL, $rs);
+    }
 }

@@ -80,6 +80,16 @@ class RedisCache implements Cache {
     }
 
     /**
+     * 拉取缓存，拉取后同时删除缓存
+     * @return minxed|NULL 缓存不存在时返回NULL
+     */
+    public function pull($key) {
+        $value = $this->get($key);
+        $this->delete($key);
+        return $value;
+    }
+
+    /**
      * 检测是否存在key,若不存在则赋值value
      */
     public function setnx($key, $value) {
@@ -114,5 +124,12 @@ class RedisCache implements Cache {
 
     protected function unformatValue($value) {
         return @unserialize($value);
+    }
+
+    /**
+     * 获取Redis实例，当封装的方法未能满足时，可调用此接口获取Reids实例进行操作
+     */
+    public function getRedis() {
+        return $this->redis;
     }
 }
